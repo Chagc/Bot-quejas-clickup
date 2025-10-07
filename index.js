@@ -36,13 +36,16 @@ client.on('message', async (msg) => {
     console.log('📩 Mensaje recibido -> from:', msg.from, 'author:', msg.author, 'body:', text);
 
     // --- Detectar mención por texto directo ---
-    const mentionString = `@5218123970836`;   // tu número en formato internacional
-    if (!text.includes(mentionString)) {
-      console.log('-> No contiene la mención directa. Ignorando mensaje.');
+    const mentionString = '@5218123970836';    // tu número en formato internacional
+    const secmenString  = '@209964509446306';  // segundo identificador 
+    
+    // ✅ Revisa si el texto NO contiene ninguna de las dos menciones
+    if (!text.includes(mentionString) && !text.includes(secmenString)) {
+      console.log('-> No contiene ninguna mención. Ignorando mensaje.');
       return;
     }
-    console.log('-> Mención detectada mediante texto directo.');
-
+    
+    console.log('-> Mención detectada mediante texto directo o alterno.');
     // --- Datos adicionales ---
     const chat = await msg.getChat().catch(e => {
       console.error('Error obteniendo chat:', e);
@@ -69,7 +72,7 @@ client.on('message', async (msg) => {
       senderName,
       message: text,
       timestamp: msg.timestamp,      // segundos (original de WhatsApp)
-      messageDateMs,                 // milisegundos desde Jan 01 1970 (UTC)
+      messageDateMs,                 // ✅ milisegundos desde Jan 01 1970 (UTC)
       messageId: msg.id ? (msg.id._serialized || msg.id) : null
     };
 
