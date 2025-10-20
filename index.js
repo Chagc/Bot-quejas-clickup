@@ -17,16 +17,7 @@ const client = new Client({
   authStrategy: new LocalAuth({ clientId: 'wa-bot' }),
   puppeteer: {
     headless: true,
-    executablePath: '/usr/bin/chromium', // 👈 fuerza usar el Chromium del sistema
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--no-first-run',
-      '--no-zygote',
-      '--disable-gpu'
-    ]
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
   }
 });
 
