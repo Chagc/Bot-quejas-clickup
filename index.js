@@ -35,7 +35,11 @@ client.on('ready', () => {
 client.on('message', async (msg) => {
   try {
     const text = msg.body || '';
-    console.log('📩 Mensaje recibido ->', text);
+    
+    if (!text || typeof text !== 'string') {
+      console.log('⚠️ Mensaje vacío o inválido recibido. Ignorando.');
+      return;
+    }
 
     // Detectar mención
     const mentionString = '@5218123970836';
