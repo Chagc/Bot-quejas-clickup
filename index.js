@@ -5,6 +5,7 @@ import { Client, LocalAuth } from 'whatsapp-web.js';
 import qrcode from 'qrcode-terminal';
 import axios from 'axios';
 import FormData from 'form-data';
+import './server.js'; // 🔗 Importa y levanta el servidor de ClickUp
 
 // --- Variables de entorno ---
 const BOT_NUMBER = process.env.BOT_NUMBER;
@@ -33,7 +34,7 @@ client.on('ready', () => {
 });
 
 // --- Mapeo de clientes por ID ---
-const clientes = {
+export const clientes = {
   "d8d447fa-dd42-43ff-be3e-38cce12206a3": { nombre: "Dr. Diego", grupoId: "1203631987654321@g.us" },
   "bb0338fa-10f2-449f-8725-d259d9e67c5d": { nombre: "Dr. López", grupoId: "1203631456123456@g.us" },
   // agrega aquí los demás clientes
@@ -117,48 +118,5 @@ client.on('message', async (msg) => {
     console.error('❌ Error procesando mensaje:', err.message);
   }
 });
-
-// --- Servidor Express para recibir webhook desde ClickUp ---
-const app = express();
-app.use(bodyParser.json());
-
-app.post('/webhook/clickup', async (req, res) => {
-  try {
-    const data = req.body;
-    console.log('📩 Webhook recibido de ClickUp');
-
-    const payload = data.payload || {};
-    const fields = payload.fields || [];
-
-    // Buscar el field_id que contiene el cliente
-    const clienteField = fields.find(f => f.field_id === "98f23bc8-32f7-4cad-ae4c-cf822bfeb4b6"); // <-- cambia si tu ID de campo es otro
-    const clienteId = clienteField?.value;
-
-    const clienteData = clientes[clienteId];
-    if (!clienteData) {
-      console.warn(`⚠️ Cliente no identificado (ID: ${clienteId})`);
-      return res.status(200).send('Cliente desconocido');
-    }
-
-    const nombreTarea = payload.name || 'Sin nombre';
-    const fechaCierre = formatearFecha(payload.time_mgmt?.date_done);
-
-    const mensaje = 
-      `🎉 *Tarea completada*\n\n` +
-      `👨‍⚕️ *Cliente:* ${clienteData.nombre}\n` +
-      `📋 *Tarea:* ${nombreTarea}\n` +
-      `📅 *Fecha de cierre:* ${fechaCierre}`;
-
-    await client.sendMessage(clienteData.grupoId, mensaje);
-    console.log(`📨 Notificación enviada al grupo de ${clienteData.nombre}`);
-
-    res.status(200).send('OK');
-  } catch (error) {
-    console.error('❌ Error procesando webhook:', error.message);
-    res.status(500).send('Error interno');
-  }
-});
-
-app.listen(PORT, () => console.log(`🚀 Servidor webhook en http://localhost:${PORT}/webhook/clickup`));
 
 client.initialize();
