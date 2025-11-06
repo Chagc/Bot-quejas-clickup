@@ -1,16 +1,12 @@
-require('dotenv').config();
-import express from 'express';
-import bodyParser from 'body-parser';
+import 'dotenv/config';
 import { Client, LocalAuth } from 'whatsapp-web.js';
 import qrcode from 'qrcode-terminal';
 import axios from 'axios';
 import FormData from 'form-data';
-import './server.js'; // 🔗 Importa y levanta el servidor de ClickUp
 
 // --- Variables de entorno ---
 const BOT_NUMBER = process.env.BOT_NUMBER;
 const MAKE_HOOK = process.env.MAKE_WEBHOOK;
-const PORT = process.env.PORT || 3000;
 
 if (!BOT_NUMBER || !MAKE_HOOK) {
   console.error('❌ Falta BOT_NUMBER o MAKE_WEBHOOK en .env');
@@ -33,11 +29,10 @@ client.on('ready', () => {
   console.log('✅ WhatsApp client listo');
 });
 
-// --- Mapeo de clientes por ID ---
-export const clientes = {
+// --- Mapeo de clientes por ID (los IDs vienen del webhook de ClickUp) ---
+const clientes = {
   "d8d447fa-dd42-43ff-be3e-38cce12206a3": { nombre: "Dr. Diego", grupoId: "1203631987654321@g.us" },
-  "bb0338fa-10f2-449f-8725-d259d9e67c5d": { nombre: "Dr. López", grupoId: "1203631456123456@g.us" },
-  // agrega aquí los demás clientes
+  "bb0338fa-10f2-449f-8725-d259d9e67c5d": { nombre: "Dr. López", grupoId: "1203631456123456@g.us" }
 };
 
 // --- Función para formatear fechas ---
@@ -57,6 +52,7 @@ client.on('message', async (msg) => {
     const text = msg.body || '';
     if (!text || typeof text !== 'string') return;
 
+    // Detecta si se menciona al bot
     const mentionString = '@5218123970836';
     const altString = '@209964509446306';
     if (!text.includes(mentionString) && !text.includes(altString)) return;
@@ -97,15 +93,12 @@ client.on('message', async (msg) => {
     console.log('📤 Enviando datos a Make...');
     const res = await axios.post(MAKE_HOOK, formData, { headers: formData.getHeaders() });
 
-    let ticketInfo = {};
-    if (typeof res.data === 'object') ticketInfo = res.data;
-    else ticketInfo = JSON.parse(res.data);
-
+    const ticketInfo = typeof res.data === 'object' ? res.data : JSON.parse(res.data);
     const title = ticketInfo.title || 'Sin título';
     const description = ticketInfo.description || 'Sin descripción';
     const dueDate = ticketInfo.due_date ? formatearFecha(ticketInfo.due_date) : 'Sin fecha límite';
 
-    const replyMessage = 
+    const replyMessage =
       `✅ *Nuevo ticket creado*\n\n` +
       `📋 *Título:* ${title}\n` +
       `📝 *Descripción:* ${description}\n` +
@@ -119,4 +112,8 @@ client.on('message', async (msg) => {
   }
 });
 
+// --- Exportar cliente y mapa de clientes para el webhook ---
+export { client, clientes, formatearFecha };
+
+// --- Inicializar WhatsApp ---
 client.initialize();
