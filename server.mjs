@@ -1,8 +1,10 @@
 import express from 'express';
 import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
-import { clientes, client } from './index.js'; // ✅ Importa tu mapa de clientes y cliente de WhatsApp
+import pkg from './index.js';  // ✅ Importa el módulo completo
+const { clientes, client } = pkg; // ✅ Extrae lo que necesitas
 dotenv.config();
+
 
 const app = express();
 app.use(bodyParser.json());
