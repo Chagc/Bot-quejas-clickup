@@ -6,14 +6,14 @@ const FormData = require('form-data');
 
 const BOT_NUMBER = process.env.BOT_NUMBER;
 const MAKE_HOOK = process.env.MAKE_WEBHOOK;
-const MAKE_HOOK_SEMSA = process.env.MAKE_WEBHOOK_SEMSA; // 🔹 segundo webhook opcional
+const MAKE_HOOK_SEMSA = process.env.MAKE_WEBHOOK_SEMSA; // 🔹 webhook adicional
 
 if (!BOT_NUMBER || !MAKE_HOOK) {
   console.error('❌ Falta BOT_NUMBER o MAKE_WEBHOOK en .env');
   process.exit(1);
 }
 
-// --- Función para formatear fechas al estilo español ---
+// --- 🗓️ Función para formatear fecha tipo “29 de octubre de 2025” ---
 function formatSpanishDate(dateString) {
   try {
     const date = new Date(dateString);
@@ -90,12 +90,13 @@ client.on('message', async (msg) => {
         formData.append(key, value ?? '');
       }
 
-      // Archivos adjuntos
+      // Archivos adjuntos (si los hay)
       if (msg.hasMedia) {
         const media = await msg.downloadMedia();
         if (media && media.data) {
           const buffer = Buffer.from(media.data, 'base64');
           formData.append('file', buffer, { filename: 'archivo', contentType: media.mimetype });
+          console.log(`📎 Archivo adjunto detectado: ${media.mimetype}`);
         }
       }
 
@@ -109,9 +110,23 @@ client.on('message', async (msg) => {
       // 🧾 Procesar respuesta del webhook
       let ticketInfo = {};
       try {
-        ticketInfo = typeof res.data === 'object' ? res.data : JSON.parse(res.data);
+        if (typeof res.data === 'object') {
+          ticketInfo = res.data;
+        } else if (typeof res.data === 'string') {
+          const clean = res.data
+            .replace(/(\r\n|\n|\r)/gm, ' ')  // quitar saltos de línea
+            .replace(/\s+/g, ' ')            // colapsar espacios
+            .trim();
+
+          try {
+            ticketInfo = JSON.parse(clean);
+          } catch (e) {
+            console.warn('⚠️ No se pudo parsear JSON, se usará texto plano.');
+            ticketInfo = {};
+          }
+        }
       } catch (e) {
-        console.error('❌ Error al parsear respuesta del webhook:', e.message);
+        console.error('❌ Error al procesar respuesta del webhook:', e.message);
       }
 
       // 🗓️ Formatear fecha si existe
@@ -119,6 +134,7 @@ client.on('message', async (msg) => {
         ? formatSpanishDate(ticketInfo.due_date)
         : 'Sin fecha límite';
 
+      // 📨 Preparar respuesta para enviar al grupo
       const replyMessage =
         `✅ *Nuevo ticket creado*\n\n` +
         `📋 *Título:* ${ticketInfo.title || 'Sin título'}\n` +
