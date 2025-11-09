@@ -5,14 +5,36 @@ const axios = require('axios');
 const FormData = require('form-data');
 
 const BOT_NUMBER = process.env.BOT_NUMBER;
-const MAKE_HOOK = process.env.MAKE_WEBHOOK;       // webhook para menciones
-const SEMSA_HOOK = process.env.SEMSA_WEBHOOK;     // webhook para SEMSA
+const MAKE_HOOK = process.env.MAKE_WEBHOOK;
+const MAKE_HOOK_SEMSA = process.env.MAKE_WEBHOOK_SEMSA; // 🔹 segundo webhook opcional
 
-if (!BOT_NUMBER || !MAKE_HOOK || !SEMSA_HOOK) {
-  console.error('❌ Falta BOT_NUMBER, MAKE_WEBHOOK o SEMSA_WEBHOOK en .env');
+if (!BOT_NUMBER || !MAKE_HOOK) {
+  console.error('❌ Falta BOT_NUMBER o MAKE_WEBHOOK en .env');
   process.exit(1);
 }
 
+// --- Función para formatear fechas al estilo español ---
+function formatSpanishDate(dateString) {
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date)) return dateString;
+
+    const meses = [
+      'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+      'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
+    ];
+
+    const dia = date.getDate();
+    const mes = meses[date.getMonth()];
+    const año = date.getFullYear();
+
+    return `${dia} de ${mes} de ${año}`;
+  } catch {
+    return dateString;
+  }
+}
+
+// --- Inicializa cliente de WhatsApp ---
 const client = new Client({
   authStrategy: new LocalAuth({ clientId: 'wa-bot' }),
   puppeteer: {
@@ -21,6 +43,7 @@ const client = new Client({
   }
 });
 
+// --- Mostrar QR ---
 client.on('qr', qr => {
   console.log('📱 Escanea este QR para vincular tu WhatsApp:');
   qrcode.generate(qr, { small: true });
@@ -30,156 +53,36 @@ client.on('ready', () => {
   console.log('✅ WhatsApp client listo');
 });
 
-/**
- * Limpia una cadena recibida del webhook y trata de parsearla a JSON.
- * Si no puede parsear, intenta extraer el primer bloque JSON {..} o [..].
- * Si aún así no puede, devuelve { raw: <cadena limpia> } para no romper el flujo.
- */
-function sanitizeAndParseResponse(rawData) {
-  try {
-    // Si Axios ya nos dió un objeto, retornarlo tal cual
-    if (typeof rawData === 'object' && rawData !== null) return rawData;
-
-    // Convertir a string y limpiar BOM y caracteres de control problemáticos
-    let s = String(rawData || '');
-
-    // Eliminar BOM al inicio
-    s = s.replace(/^\uFEFF/, '');
-
-    // Reemplazar saltos de línea y retornos por espacios para evitar breaks
-    s = s.replace(/\r\n/g, ' ').replace(/\n/g, ' ').replace(/\r/g, ' ');
-
-    // Eliminar caracteres de control no imprimibles excepto tab (9) y espacio (32)
-    s = s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
-
-    // Trim
-    s = s.trim();
-
-    // Log para depuración (puedes comentar luego)
-    console.log('🔍 Respuesta limpia de webhook:', s);
-
-    // Intento 1: parsear directamente
-    try {
-      return JSON.parse(s);
-    } catch (e) {
-      // continuar a intentos siguientes
-    }
-
-    // Intento 2: extraer primer bloque JSON {...}
-    const objMatch = s.match(/\{[\s\S]*\}/);
-    if (objMatch && objMatch[0]) {
-      try {
-        return JSON.parse(objMatch[0]);
-      } catch (e) {
-        // no parseó, seguir
-      }
-    }
-
-    // Intento 3: extraer primer array JSON [...]
-    const arrMatch = s.match(/\[[\s\S]*\]/);
-    if (arrMatch && arrMatch[0]) {
-      try {
-        return JSON.parse(arrMatch[0]);
-      } catch (e) {
-        // no parseó
-      }
-    }
-
-    // Si nada funcionó, devolver la cadena limpia en raw
-    return { raw: s };
-
-  } catch (err) {
-    // En caso de error inesperado
-    console.error('❌ sanitizeAndParseResponse falló:', err);
-    return { raw: String(rawData) };
-  }
-}
-
+// --- Manejo de mensajes ---
 client.on('message', async (msg) => {
   try {
-    const text = msg.body?.trim() || '';
-    if (!text) return console.log('⚠️ Mensaje vacío, ignorando.');
+    const text = msg.body || '';
+    if (!text || typeof text !== 'string') return;
 
     const chat = await msg.getChat();
-    const contact = await msg.getContact();
-    const senderJid = contact?.id?._serialized || msg.author || null;
-    const senderNumber = senderJid ? senderJid.split('@')[0] : 'Desconocido';
-    const senderName = contact?.pushname || contact?.name || senderNumber;
-    const messageDateMs = msg.timestamp * 1000;
-    const messageDate = formatSpanishDate(messageDateMs);
+    const isGroup = chat.isGroup;
 
-    // 🗓️ Formatear fecha legible
-    function formatSpanishDate(ms) {
-      const date = new Date(ms);
-      const meses = [
-        'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
-        'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
-      ];
-      const dia = date.getDate();
-      const mes = meses[date.getMonth()];
-      const año = date.getFullYear();
-      return `${dia} de ${mes} de ${año}`;
-    }
-
-    // === CASO 1: Mensaje DIRECTO con palabra SEMSA ===
-    if (!chat.isGroup && text.toUpperCase().includes('SEMSA')) {
-      console.log('💬 Mensaje directo con palabra SEMSA detectado.');
-
-      const payload = {
-        chatType: 'direct',
-        senderJid,
-        senderNumber,
-        senderName,
-        message: text,
-        timestamp: msg.timestamp,
-        messageDateMs,
-        messageDate
-      };
-
-      const formData = new FormData();
-      for (const [key, value] of Object.entries(payload)) {
-        formData.append(key, value ?? '');
-      }
-
-      if (msg.hasMedia) {
-        const media = await msg.downloadMedia();
-        if (media?.data) {
-          const buffer = Buffer.from(media.data, 'base64');
-          formData.append('file', buffer, {
-            filename: 'archivo.' + (media.mimetype.split('/')[1] || 'bin'),
-            contentType: media.mimetype
-          });
-        }
-      }
-
-      console.log('📤 Enviando a webhook SEMSA...');
-      const res = await axios.post(SEMSA_HOOK, formData, {
-        headers: formData.getHeaders(),
-        maxContentLength: Infinity,
-        maxBodyLength: Infinity
-      });
-      console.log('✅ SEMSA webhook enviado. status =', res.status);
-      return;
-    }
-
-    // === CASO 2: Mención en grupo ===
+    // 🟢 CASO 1: Mención en grupo
     const mentionString = '@5218123970836';
     const altString = '@209964509446306';
 
-    if (chat.isGroup && (text.includes(mentionString) || text.includes(altString))) {
-      console.log('🔔 Mención detectada en grupo, procesando...');
+    if (isGroup && (text.includes(mentionString) || text.includes(altString))) {
+      console.log('🔔 Mención detectada en grupo.');
+
+      const contact = await msg.getContact();
+      const senderJid = contact.id._serialized;
+      const senderNumber = senderJid.split('@')[0];
+      const senderName = contact.pushname || contact.name || senderNumber;
 
       const payload = {
-        chatType: 'group',
         groupId: msg.from,
-        groupName: chat?.name || chat?.formattedTitle || null,
+        groupName: chat.name || chat.formattedTitle,
         senderJid,
         senderNumber,
         senderName,
         message: text,
         timestamp: msg.timestamp,
-        messageDateMs,
-        messageDate
+        messageDateMs: msg.timestamp * 1000
       };
 
       const formData = new FormData();
@@ -187,43 +90,66 @@ client.on('message', async (msg) => {
         formData.append(key, value ?? '');
       }
 
+      // Archivos adjuntos
       if (msg.hasMedia) {
         const media = await msg.downloadMedia();
-        if (media?.data) {
+        if (media && media.data) {
           const buffer = Buffer.from(media.data, 'base64');
-          formData.append('file', buffer, {
-            filename: 'archivo.' + (media.mimetype.split('/')[1] || 'bin'),
-            contentType: media.mimetype
-          });
+          formData.append('file', buffer, { filename: 'archivo', contentType: media.mimetype });
         }
       }
 
-      console.log('📤 Enviando datos binarios a Make...');
+      // 📤 Enviar al webhook principal
       const res = await axios.post(MAKE_HOOK, formData, {
         headers: formData.getHeaders(),
         maxContentLength: Infinity,
         maxBodyLength: Infinity
       });
-      console.log('✅ Webhook enviado. status =', res.status);
 
-      // --- Usar la función robusta para parsear la respuesta ---
-      const ticketInfo = sanitizeAndParseResponse(res.data);
+      // 🧾 Procesar respuesta del webhook
+      let ticketInfo = {};
+      try {
+        ticketInfo = typeof res.data === 'object' ? res.data : JSON.parse(res.data);
+      } catch (e) {
+        console.error('❌ Error al parsear respuesta del webhook:', e.message);
+      }
 
-      // Si viene como raw (no JSON), puedes incluir el texto completo en la respuesta
-      const title = ticketInfo.title || ticketInfo.titulo || (ticketInfo.raw ? 'Sin título (ver raw)' : 'Sin título');
-      const description = ticketInfo.description || ticketInfo.descripcion || ticketInfo.raw || 'Sin descripción';
-      const dueDate = ticketInfo.due_date || ticketInfo.dueDate || 'Sin fecha límite';
+      // 🗓️ Formatear fecha si existe
+      const dueDate = ticketInfo.due_date
+        ? formatSpanishDate(ticketInfo.due_date)
+        : 'Sin fecha límite';
 
       const replyMessage =
         `✅ *Nuevo ticket creado*\n\n` +
-        `📋 *Título:* ${title}\n` +
-        `📝 *Descripción:* ${description}\n` +
+        `📋 *Título:* ${ticketInfo.title || 'Sin título'}\n` +
+        `📝 *Descripción:* ${ticketInfo.description || 'Sin descripción'}\n` +
         `📅 *Fecha límite:* ${dueDate}`;
 
       await client.sendMessage(msg.from, replyMessage);
       console.log('📨 Ticket confirmado en grupo.');
-    } else {
-      console.log('➡️ Mensaje no aplica a ninguna condición.');
+      return;
+    }
+
+    // 🟣 CASO 2: Mensaje directo que contiene la palabra "SEMSA"
+    if (!isGroup && text.toUpperCase().includes('SEMSA')) {
+      console.log('📩 Mensaje directo con palabra SEMSA detectado.');
+
+      if (!MAKE_HOOK_SEMSA) {
+        console.warn('⚠️ No hay MAKE_WEBHOOK_SEMSA configurado en .env');
+        return;
+      }
+
+      const contact = await msg.getContact();
+      const payload = {
+        from: contact.id._serialized,
+        name: contact.pushname || contact.name,
+        message: text,
+        timestamp: msg.timestamp,
+        messageDateMs: msg.timestamp * 1000
+      };
+
+      await axios.post(MAKE_HOOK_SEMSA, payload);
+      console.log('✅ Enviado a webhook SEMSA.');
     }
 
   } catch (err) {
