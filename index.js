@@ -30,6 +30,71 @@ client.on('ready', () => {
   console.log('✅ WhatsApp client listo');
 });
 
+/**
+ * Limpia una cadena recibida del webhook y trata de parsearla a JSON.
+ * Si no puede parsear, intenta extraer el primer bloque JSON {..} o [..].
+ * Si aún así no puede, devuelve { raw: <cadena limpia> } para no romper el flujo.
+ */
+function sanitizeAndParseResponse(rawData) {
+  try {
+    // Si Axios ya nos dió un objeto, retornarlo tal cual
+    if (typeof rawData === 'object' && rawData !== null) return rawData;
+
+    // Convertir a string y limpiar BOM y caracteres de control problemáticos
+    let s = String(rawData || '');
+
+    // Eliminar BOM al inicio
+    s = s.replace(/^\uFEFF/, '');
+
+    // Reemplazar saltos de línea y retornos por espacios para evitar breaks
+    s = s.replace(/\r\n/g, ' ').replace(/\n/g, ' ').replace(/\r/g, ' ');
+
+    // Eliminar caracteres de control no imprimibles excepto tab (9) y espacio (32)
+    s = s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+
+    // Trim
+    s = s.trim();
+
+    // Log para depuración (puedes comentar luego)
+    console.log('🔍 Respuesta limpia de webhook:', s);
+
+    // Intento 1: parsear directamente
+    try {
+      return JSON.parse(s);
+    } catch (e) {
+      // continuar a intentos siguientes
+    }
+
+    // Intento 2: extraer primer bloque JSON {...}
+    const objMatch = s.match(/\{[\s\S]*\}/);
+    if (objMatch && objMatch[0]) {
+      try {
+        return JSON.parse(objMatch[0]);
+      } catch (e) {
+        // no parseó, seguir
+      }
+    }
+
+    // Intento 3: extraer primer array JSON [...]
+    const arrMatch = s.match(/\[[\s\S]*\]/);
+    if (arrMatch && arrMatch[0]) {
+      try {
+        return JSON.parse(arrMatch[0]);
+      } catch (e) {
+        // no parseó
+      }
+    }
+
+    // Si nada funcionó, devolver la cadena limpia en raw
+    return { raw: s };
+
+  } catch (err) {
+    // En caso de error inesperado
+    console.error('❌ sanitizeAndParseResponse falló:', err);
+    return { raw: String(rawData) };
+  }
+}
+
 client.on('message', async (msg) => {
   try {
     const text = msg.body?.trim() || '';
@@ -134,17 +199,13 @@ client.on('message', async (msg) => {
       });
       console.log('✅ Webhook enviado. status =', res.status);
 
-      // --- Intentar leer la respuesta JSON ---
-      let ticketInfo = {};
-      try {
-        ticketInfo = typeof res.data === 'object' ? res.data : JSON.parse(res.data);
-      } catch (e) {
-        console.error('❌ Error al parsear respuesta de Make:', e.message);
-      }
+      // --- Usar la función robusta para parsear la respuesta ---
+      const ticketInfo = sanitizeAndParseResponse(res.data);
 
-      const title = ticketInfo.title || 'Sin título';
-      const description = ticketInfo.description || 'Sin descripción';
-      const dueDate = ticketInfo.due_date || 'Sin fecha límite';
+      // Si viene como raw (no JSON), puedes incluir el texto completo en la respuesta
+      const title = ticketInfo.title || ticketInfo.titulo || (ticketInfo.raw ? 'Sin título (ver raw)' : 'Sin título');
+      const description = ticketInfo.description || ticketInfo.descripcion || ticketInfo.raw || 'Sin descripción';
+      const dueDate = ticketInfo.due_date || ticketInfo.dueDate || 'Sin fecha límite';
 
       const replyMessage =
         `✅ *Nuevo ticket creado*\n\n` +
