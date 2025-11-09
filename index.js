@@ -106,13 +106,20 @@ client.on('message', async (msg) => {
     const senderNumber = senderJid ? senderJid.split('@')[0] : 'Desconocido';
     const senderName = contact?.pushname || contact?.name || senderNumber;
     const messageDateMs = msg.timestamp * 1000;
+    const messageDate = formatSpanishDate(messageDateMs);
 
     // 🗓️ Formatear fecha legible
-    const messageDate = new Date(messageDateMs).toLocaleDateString('es-MX', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric'
-    });
+    function formatSpanishDate(ms) {
+      const date = new Date(ms);
+      const meses = [
+        'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+        'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
+      ];
+      const dia = date.getDate();
+      const mes = meses[date.getMonth()];
+      const año = date.getFullYear();
+      return `${dia} de ${mes} de ${año}`;
+    }
 
     // === CASO 1: Mensaje DIRECTO con palabra SEMSA ===
     if (!chat.isGroup && text.toUpperCase().includes('SEMSA')) {
