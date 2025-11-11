@@ -188,7 +188,8 @@ client.on('message', async (msg) => {
             `✅ *Ticket creado exitosamente*\n\n` +
             `📋 *Título:* ${ticketInfo.title || 'Sin título'}\n` +
             `📝 *Descripción:* ${ticketInfo.description || 'Sin descripción'}\n` +
-            
+            `📅 *Fecha límite:* ${dueDate}`;
+    
           await client.sendMessage(msg.from, confirmMessage);
           console.log('📨 Confirmación enviada al usuario SEMSA.');
         } else {
@@ -201,7 +202,12 @@ client.on('message', async (msg) => {
         console.error('❌ Error al enviar al webhook SEMSA:', err.message);
         await client.sendMessage(msg.from, '⚠️ Ocurrió un error al registrar tu solicitud SEMSA. Inténtalo más tarde.');
       }
-    });
+    } // 👈 ESTA LLAVE FALTABA para cerrar el if
+  } catch (error) {
+    console.error('❌ Error en el manejo de mensaje:', error.message);
+  }
+}); // 👈 Ahora sí se cierra correctamente el evento
+
 
 
 // --- 🚀 Servidor Express para recibir webhooks de ClickUp ---
