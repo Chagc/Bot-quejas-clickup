@@ -188,8 +188,7 @@ client.on('message', async (msg) => {
             `✅ *Ticket creado exitosamente*\n\n` +
             `📋 *Título:* ${ticketInfo.title || 'Sin título'}\n` +
             `📝 *Descripción:* ${ticketInfo.description || 'Sin descripción'}\n` +
-            `📅 *Fecha límite:* ${dueDate}`;
-    
+            
           await client.sendMessage(msg.from, confirmMessage);
           console.log('📨 Confirmación enviada al usuario SEMSA.');
         } else {
