@@ -152,12 +152,12 @@ client.on('message', async (msg) => {
     // 🟣 CASO 2: Mensaje directo que contiene la palabra "SEMSA"
     if (!isGroup && text.toUpperCase().includes('SEMSA')) {
       console.log('📩 Mensaje directo con palabra SEMSA detectado.');
-
+    
       if (!MAKE_HOOK_SEMSA) {
         console.warn('⚠️ No hay MAKE_WEBHOOK_SEMSA configurado en .env');
         return;
       }
-
+    
       const payload = {
         from: contact.id._serialized,
         name: contact.pushname || contact.name,
@@ -165,17 +165,45 @@ client.on('message', async (msg) => {
         timestamp: msg.timestamp,
         messageDateMs: msg.timestamp * 1000
       };
-
-      await axios.post(MAKE_HOOK_SEMSA, payload);
-      console.log('✅ Enviado a webhook SEMSA.');
+    
+      try {
+        const res = await axios.post(MAKE_HOOK_SEMSA, payload);
+        console.log('✅ Enviado a webhook SEMSA.');
+    
+        // Intentamos leer información del ticket si el webhook devuelve datos
+        let ticketInfo = {};
+        try {
+          ticketInfo = typeof res.data === 'object' ? res.data : JSON.parse(res.data);
+        } catch {
+          ticketInfo = {};
+        }
+    
+        // Si el webhook devolvió información del ticket, confirmamos al usuario
+        if (ticketInfo.title || ticketInfo.id) {
+          const dueDate = ticketInfo.due_date
+            ? formatSpanishDate(ticketInfo.due_date)
+            : 'Sin fecha límite';
+    
+          const confirmMessage =
+            `✅ *Ticket creado exitosamente*\n\n` +
+            `📋 *Título:* ${ticketInfo.title || 'Sin título'}\n` +
+            `📝 *Descripción:* ${ticketInfo.description || 'Sin descripción'}\n` +
+            `📅 *Fecha límite:* ${dueDate}`;
+    
+          await client.sendMessage(msg.from, confirmMessage);
+          console.log('📨 Confirmación enviada al usuario SEMSA.');
+        } else {
+          // Si el webhook no devuelve ticket info, al menos confirma recepción
+          await client.sendMessage(msg.from, '✅ Tu solicitud SEMSA ha sido registrada correctamente.');
+          console.log('📨 Confirmación simple enviada al usuario SEMSA.');
+        }
+    
+      } catch (err) {
+        console.error('❌ Error al enviar al webhook SEMSA:', err.message);
+        await client.sendMessage(msg.from, '⚠️ Ocurrió un error al registrar tu solicitud SEMSA. Inténtalo más tarde.');
+      }
     }
 
-  } catch (err) {
-    console.error('❌ Error procesando mensaje:', err.message || err);
-  }
-});
-
-client.initialize();
 
 // --- 🚀 Servidor Express para recibir webhooks de ClickUp ---
 const app = express();
