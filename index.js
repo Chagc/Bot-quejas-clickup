@@ -201,7 +201,7 @@ client.on('message', async (msg) => {
         console.error('❌ Error al enviar al webhook SEMSA:', err.message);
         await client.sendMessage(msg.from, '⚠️ Ocurrió un error al registrar tu solicitud SEMSA. Inténtalo más tarde.');
       }
-    }
+    });
 
 
 // --- 🚀 Servidor Express para recibir webhooks de ClickUp ---
