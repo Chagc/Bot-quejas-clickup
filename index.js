@@ -173,15 +173,10 @@ client.on('message', async (msg) => {
         const ticketInfo = safeParseJSON(res.data);
 
         if (ticketInfo.title || ticketInfo.id) {
-          const dueDate = ticketInfo.due_date
-            ? formatSpanishDate(ticketInfo.due_date)
-            : 'Sin fecha límite';
-
           const confirmMessage =
             `✅ *Ticket creado exitosamente*\n\n` +
             `📋 *Título:* ${ticketInfo.title || 'Sin título'}\n` +
-            `📝 *Descripción:* ${ticketInfo.description || 'Sin descripción'}\n` +
-            `📅 *Fecha límite:* ${dueDate}`;
+            `📝 *Descripción:* ${ticketInfo.description || 'Sin descripción'}`;
 
           await client.sendMessage(msg.from, confirmMessage);
           console.log('📨 Confirmación enviada al usuario SEMSA.');
