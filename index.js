@@ -5,24 +5,23 @@ const qrcode = require('qrcode-terminal');
 const axios = require('axios');
 const FormData = require('form-data');
 
+// === VARIABLES DE ENTORNO ===
 const PORT = process.env.PORT || 3000;
 const BOT_NUMBER = process.env.BOT_NUMBER;
 const MAKE_HOOK = process.env.MAKE_WEBHOOK;
 const MAKE_HOOK_SEMSA = process.env.MAKE_WEBHOOK_SEMSA;
 
-if (!BOT_NUMBER || !MAKE_HOOK) {
-  console.error('❌ Falta BOT_NUMBER o MAKE_WEBHOOK en .env');
+if (!BOT_NUMBER || !MAKE_HOOK || !MAKE_HOOK_SEMSA) {
+  console.error('❌ Falta alguna variable requerida (BOT_NUMBER, MAKE_WEBHOOK o MAKE_WEBHOOK_SEMSA) en .env');
   process.exit(1);
 }
 
-// --- 🧭 Mapeo empresa -> grupo de WhatsApp (ajústalo manualmente)
+// === MAPEO DE EMPRESA -> GRUPO WHATSAPP ===
 const COMPANY_GROUPS = {
-  'd6d48695-1717-4cdb-bfe5-7f7840079138': '5218123970836-1700659823@g.us', // ejemplo
-  // agrega más mappings aquí:
-  // 'uuid_empresa': 'id_grupo@g.us'
+  'd6d48695-1717-4cdb-bfe5-7f7840079138': '5218123970836-1700659823@g.us'
 };
 
-// --- 🗓️ Función para formatear fecha tipo “29 de octubre de 2025” ---
+// === FUNCIÓN PARA FORMATEAR FECHA ===
 function formatSpanishDate(dateString) {
   try {
     const date = new Date(dateString);
@@ -36,14 +35,22 @@ function formatSpanishDate(dateString) {
     const dia = date.getDate();
     const mes = meses[date.getMonth()];
     const año = date.getFullYear();
-
     return `${dia} de ${mes} de ${año}`;
   } catch {
     return dateString;
   }
 }
 
-// --- Inicializa cliente de WhatsApp ---
+// === FUNCIÓN SEGURA PARA PARSEAR JSON ===
+function safeParseJSON(data) {
+  try {
+    return typeof data === 'object' ? data : JSON.parse(data);
+  } catch {
+    return {};
+  }
+}
+
+// === INICIALIZAR CLIENTE WHATSAPP ===
 const client = new Client({
   authStrategy: new LocalAuth({ clientId: 'wa-bot' }),
   puppeteer: {
@@ -52,7 +59,7 @@ const client = new Client({
   }
 });
 
-// --- Mostrar QR ---
+// === EVENTOS DEL CLIENTE ===
 client.on('qr', qr => {
   console.log('📱 Escanea este QR para vincular tu WhatsApp:');
   qrcode.generate(qr, { small: true });
@@ -62,7 +69,15 @@ client.on('ready', () => {
   console.log('✅ WhatsApp client listo');
 });
 
-// --- Manejo de mensajes entrantes ---
+client.on('auth_failure', msg => {
+  console.error('❌ Error de autenticación de WhatsApp:', msg);
+});
+
+client.on('disconnected', reason => {
+  console.warn('⚠️ Cliente de WhatsApp desconectado:', reason);
+});
+
+// === MANEJO DE MENSAJES ===
 client.on('message', async (msg) => {
   try {
     const text = msg.body || '';
@@ -72,19 +87,19 @@ client.on('message', async (msg) => {
     const contact = await msg.getContact();
     const isGroup = chat.isGroup;
 
-    // 📜 Mostrar todos los mensajes recibidos
+    // Log del mensaje recibido
     if (isGroup) {
       console.log('\n💬 Mensaje recibido en grupo:', chat.name || 'Sin nombre');
-      console.log('🆔 ID del grupo:', chat.id._serialized);
+      console.log('🆔 ID grupo:', chat.id._serialized);
       console.log('👤 Enviado por:', contact.pushname || contact.name || contact.number);
       console.log('📄 Contenido:', text);
     } else {
-      console.log('\n💬 Mensaje directo recibido de:', contact.pushname || contact.name || contact.number);
-      console.log('🆔 ID del chat:', chat.id._serialized);
+      console.log('\n💬 Mensaje directo de:', contact.pushname || contact.name || contact.number);
+      console.log('🆔 ID chat:', chat.id._serialized);
       console.log('📄 Contenido:', text);
     }
 
-    // 🟢 CASO 1: Mención en grupo
+    // === CASO 1: MENCIÓN EN GRUPO ===
     const mentionString = '@5218123970836';
     const altString = '@209964509446306';
 
@@ -111,7 +126,6 @@ client.on('message', async (msg) => {
         formData.append(key, value ?? '');
       }
 
-      // Archivos adjuntos (si los hay)
       if (msg.hasMedia) {
         const media = await msg.downloadMedia();
         if (media && media.data) {
@@ -127,16 +141,8 @@ client.on('message', async (msg) => {
         maxBodyLength: Infinity
       });
 
-      let ticketInfo = {};
-      try {
-        ticketInfo = typeof res.data === 'object' ? res.data : JSON.parse(res.data);
-      } catch {
-        ticketInfo = {};
-      }
-
-      const dueDate = ticketInfo.due_date
-        ? formatSpanishDate(ticketInfo.due_date)
-        : 'Sin fecha límite';
+      const ticketInfo = safeParseJSON(res.data);
+      const dueDate = ticketInfo.due_date ? formatSpanishDate(ticketInfo.due_date) : 'Sin fecha límite';
 
       const replyMessage =
         `✅ *Nuevo ticket creado*\n\n` +
@@ -149,15 +155,10 @@ client.on('message', async (msg) => {
       return;
     }
 
-    // 🟣 CASO 2: Mensaje directo que contiene la palabra "SEMSA"
+    // === CASO 2: MENSAJE DIRECTO CON PALABRA "SEMSA" ===
     if (!isGroup && text.toUpperCase().includes('SEMSA')) {
       console.log('📩 Mensaje directo con palabra SEMSA detectado.');
-    
-      if (!MAKE_HOOK_SEMSA) {
-        console.warn('⚠️ No hay MAKE_WEBHOOK_SEMSA configurado en .env');
-        return;
-      }
-    
+
       const payload = {
         from: contact.id._serialized,
         name: contact.pushname || contact.name,
@@ -165,55 +166,50 @@ client.on('message', async (msg) => {
         timestamp: msg.timestamp,
         messageDateMs: msg.timestamp * 1000
       };
-    
+
       try {
         const res = await axios.post(MAKE_HOOK_SEMSA, payload);
         console.log('✅ Enviado a webhook SEMSA.');
-    
-        // Intentamos leer información del ticket si el webhook devuelve datos
-        let ticketInfo = {};
-        try {
-          ticketInfo = typeof res.data === 'object' ? res.data : JSON.parse(res.data);
-        } catch {
-          ticketInfo = {};
-        }
-    
-        // Si el webhook devolvió información del ticket, confirmamos al usuario
+        const ticketInfo = safeParseJSON(res.data);
+
         if (ticketInfo.title || ticketInfo.id) {
           const dueDate = ticketInfo.due_date
             ? formatSpanishDate(ticketInfo.due_date)
             : 'Sin fecha límite';
-    
+
           const confirmMessage =
             `✅ *Ticket creado exitosamente*\n\n` +
             `📋 *Título:* ${ticketInfo.title || 'Sin título'}\n` +
             `📝 *Descripción:* ${ticketInfo.description || 'Sin descripción'}\n` +
             `📅 *Fecha límite:* ${dueDate}`;
-    
+
           await client.sendMessage(msg.from, confirmMessage);
           console.log('📨 Confirmación enviada al usuario SEMSA.');
         } else {
-          // Si el webhook no devuelve ticket info, al menos confirma recepción
           await client.sendMessage(msg.from, '✅ Tu solicitud SEMSA ha sido registrada correctamente.');
           console.log('📨 Confirmación simple enviada al usuario SEMSA.');
         }
-    
       } catch (err) {
         console.error('❌ Error al enviar al webhook SEMSA:', err.message);
         await client.sendMessage(msg.from, '⚠️ Ocurrió un error al registrar tu solicitud SEMSA. Inténtalo más tarde.');
       }
-    } // 👈 ESTA LLAVE FALTABA para cerrar el if
+    }
+
   } catch (error) {
     console.error('❌ Error en el manejo de mensaje:', error.message);
   }
-}); // 👈 Ahora sí se cierra correctamente el evento
+});
 
-
-
-// --- 🚀 Servidor Express para recibir webhooks de ClickUp ---
+// === SERVIDOR EXPRESS ===
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
+// Ruta base para evitar "Cannot GET /"
+app.get('/', (req, res) => {
+  res.send('✅ Servidor del bot de WhatsApp está funcionando correctamente.');
+});
+
+// Webhook de ClickUp
 app.post('/clickup-webhook', async (req, res) => {
   try {
     console.log('\n📩 Webhook recibido de ClickUp');
@@ -224,25 +220,21 @@ app.post('/clickup-webhook', async (req, res) => {
       return res.sendStatus(400);
     }
 
-    // Buscar el "value" que identifica a la empresa
     const companyField = body.payload.fields.find(f => f.field_id === 'f8b468f0-9e82-4c8f-8f6e-df1060a8ddbf');
     const companyId = companyField?.value;
     console.log('🏢 Empresa UUID:', companyId);
 
-    // Si el ID tiene grupo asociado
     const groupId = COMPANY_GROUPS[companyId];
     if (!groupId) {
       console.warn('⚠️ No se encontró grupo de WhatsApp para esa empresa');
       return res.sendStatus(200);
     }
 
-    // Validar si la tarea está completada
     const doneDate = body.payload?.time_mgmt?.date_done;
     if (doneDate) {
       const taskName = body.payload.name || 'Sin nombre';
       const fecha = formatSpanishDate(new Date(parseInt(doneDate)));
       const mensaje = `✅ *Tarea completada*\n📋 *${taskName}*\n📅 Finalizada el ${fecha}`;
-
       await client.sendMessage(groupId, mensaje);
       console.log(`📨 Mensaje enviado a grupo (${groupId}): "${taskName}" completada`);
     }
@@ -254,6 +246,12 @@ app.post('/clickup-webhook', async (req, res) => {
   }
 });
 
+// Inicia servidor
 app.listen(PORT, () => {
   console.log(`🚀 Servidor Express escuchando en puerto ${PORT}`);
+});
+
+// Inicializa el cliente WhatsApp
+client.initialize().catch(err => {
+  console.error('❌ Error al inicializar el cliente WhatsApp:', err.message);
 });
