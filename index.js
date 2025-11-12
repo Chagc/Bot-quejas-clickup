@@ -131,6 +131,8 @@ client.on('message', async (msg) => {
         maxContentLength: Infinity,
         maxBodyLength: Infinity
       });
+      
+      console.log('📥 Respuesta Make (GRUPO):', typeof res.data, res.data);
 
       // --- PROCESAR RESPUESTA DE MAKE (GRUPOS) ---
       let ticketInfo = res.data;
@@ -168,6 +170,7 @@ client.on('message', async (msg) => {
       try {
         const res = await axios.post(MAKE_HOOK_SEMSA, payload);
         console.log('✅ Enviado a webhook SEMSA.');
+        console.log('📥 Respuesta Make (SEMSA):', typeof res.data, res.data); // <--- AGREGA ESTA LÍNEA
 
         // --- PROCESAR RESPUESTA DE MAKE (SEMSA) ---
         let ticketInfo = res.data;
