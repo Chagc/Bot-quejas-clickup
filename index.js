@@ -273,4 +273,4 @@ client.initialize().catch(err => {
   console.error('❌ Error al inicializar el cliente WhatsApp:', err.message);
 });
 
-//end code
+//end code 2
