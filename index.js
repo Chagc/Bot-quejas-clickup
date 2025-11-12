@@ -41,6 +41,33 @@ function formatSpanishDate(dateString) {
   }
 }
 
+// === FUNCIÓN PARA LIMPIAR Y PARSEAR RESPUESTA DE MAKE ===
+function parseMakeResponse(data) {
+  if (!data) return {};
+
+  // Si es objeto ya, lo devolvemos directo
+  if (typeof data === 'object') return data;
+
+  // Si es string, limpiamos y parseamos
+  if (typeof data === 'string') {
+    try {
+      // Limpia saltos de línea, tabulaciones, espacios iniciales y finales
+      const clean = data
+        .replace(/^[^{]+/, '') // Elimina texto antes del primer {
+        .replace(/[^}]+$/, '') // Elimina texto después del último }
+        .replace(/\r?\n|\r/g, '') // Quita saltos de línea
+        .trim();
+
+      return JSON.parse(clean);
+    } catch (err) {
+      console.error('⚠️ No se pudo parsear respuesta de Make:', err.message);
+      return {};
+    }
+  }
+
+  return {};
+}
+
 // === INICIALIZAR CLIENTE WHATSAPP ===
 const client = new Client({
   authStrategy: new LocalAuth({ clientId: 'wa-bot' }),
@@ -131,17 +158,13 @@ client.on('message', async (msg) => {
         maxContentLength: Infinity,
         maxBodyLength: Infinity
       });
-      
-      console.log('📥 Respuesta Make (GRUPO):', typeof res.data, res.data);
 
-      // --- PROCESAR RESPUESTA DE MAKE (GRUPOS) ---
-      let ticketInfo = res.data;
-      if (typeof ticketInfo === 'string') {
-        try { ticketInfo = JSON.parse(ticketInfo); } catch { ticketInfo = {}; }
-      }
+      console.log('📥 Respuesta Make (GRUPO):', res.data);
 
-      const title = ticketInfo.title || ticketInfo.name || 'Sin título';
-      const description = ticketInfo.description || ticketInfo.details || 'Sin descripción';
+      const ticketInfo = parseMakeResponse(res.data);
+
+      const title = ticketInfo.title || 'Sin título';
+      const description = ticketInfo.description || 'Sin descripción';
       const dueDate = ticketInfo.due_date ? formatSpanishDate(ticketInfo.due_date) : 'Sin fecha límite';
 
       const replyMessage =
@@ -169,17 +192,12 @@ client.on('message', async (msg) => {
 
       try {
         const res = await axios.post(MAKE_HOOK_SEMSA, payload);
-        console.log('✅ Enviado a webhook SEMSA.');
-        console.log('📥 Respuesta Make (SEMSA):', typeof res.data, res.data); // <--- AGREGA ESTA LÍNEA
+        console.log('📥 Respuesta Make (SEMSA):', res.data);
 
-        // --- PROCESAR RESPUESTA DE MAKE (SEMSA) ---
-        let ticketInfo = res.data;
-        if (typeof ticketInfo === 'string') {
-          try { ticketInfo = JSON.parse(ticketInfo); } catch { ticketInfo = {}; }
-        }
+        const ticketInfo = parseMakeResponse(res.data);
 
-        const title = ticketInfo.title || ticketInfo.result || 'Sin título';
-        const description = ticketInfo.description || ticketInfo.message || 'Sin descripción';
+        const title = ticketInfo.title || 'Sin título';
+        const description = ticketInfo.description || 'Sin descripción';
 
         const confirmMessage =
           `✅ *Ticket creado exitosamente*\n\n` +
@@ -203,7 +221,7 @@ client.on('message', async (msg) => {
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
-// Ruta base para evitar "Cannot GET /"
+// Ruta base
 app.get('/', (req, res) => {
   res.send('✅ Servidor del bot de WhatsApp está funcionando correctamente.');
 });
