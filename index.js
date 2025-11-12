@@ -21,7 +21,7 @@ const COMPANY_GROUPS = {
   'd6d48695-1717-4cdb-bfe5-7f7840079138': '5218123970836-1700659823@g.us'
 };
 
-// === FUNCIÓN PARA FORMATEAR FECHA ===
+// === FUNCIÓN PARA FORMATEAR FECHA EN ESPAÑOL ===
 function formatSpanishDate(dateString) {
   try {
     const date = new Date(dateString);
@@ -38,15 +38,6 @@ function formatSpanishDate(dateString) {
     return `${dia} de ${mes} de ${año}`;
   } catch {
     return dateString;
-  }
-}
-
-// === FUNCIÓN SEGURA PARA PARSEAR JSON ===
-function safeParseJSON(data) {
-  try {
-    return typeof data === 'object' ? data : JSON.parse(data);
-  } catch {
-    return {};
   }
 }
 
@@ -141,13 +132,20 @@ client.on('message', async (msg) => {
         maxBodyLength: Infinity
       });
 
-      const ticketInfo = safeParseJSON(res.data);
+      // --- PROCESAR RESPUESTA DE MAKE (GRUPOS) ---
+      let ticketInfo = res.data;
+      if (typeof ticketInfo === 'string') {
+        try { ticketInfo = JSON.parse(ticketInfo); } catch { ticketInfo = {}; }
+      }
+
+      const title = ticketInfo.title || ticketInfo.name || 'Sin título';
+      const description = ticketInfo.description || ticketInfo.details || 'Sin descripción';
       const dueDate = ticketInfo.due_date ? formatSpanishDate(ticketInfo.due_date) : 'Sin fecha límite';
 
       const replyMessage =
         `✅ *Nuevo ticket creado*\n\n` +
-        `📋 *Título:* ${ticketInfo.title || 'Sin título'}\n` +
-        `📝 *Descripción:* ${ticketInfo.description || 'Sin descripción'}\n` +
+        `📋 *Título:* ${title}\n` +
+        `📝 *Descripción:* ${description}\n` +
         `📅 *Fecha límite:* ${dueDate}`;
 
       await client.sendMessage(msg.from, replyMessage);
@@ -170,20 +168,23 @@ client.on('message', async (msg) => {
       try {
         const res = await axios.post(MAKE_HOOK_SEMSA, payload);
         console.log('✅ Enviado a webhook SEMSA.');
-        const ticketInfo = safeParseJSON(res.data);
 
-        if (ticketInfo.title || ticketInfo.id) {
-          const confirmMessage =
-            `✅ *Ticket creado exitosamente*\n\n` +
-            `📋 *Título:* ${ticketInfo.title || 'Sin título'}\n` +
-            `📝 *Descripción:* ${ticketInfo.description || 'Sin descripción'}`;
-
-          await client.sendMessage(msg.from, confirmMessage);
-          console.log('📨 Confirmación enviada al usuario SEMSA.');
-        } else {
-          await client.sendMessage(msg.from, '✅ Tu solicitud SEMSA ha sido registrada correctamente.');
-          console.log('📨 Confirmación simple enviada al usuario SEMSA.');
+        // --- PROCESAR RESPUESTA DE MAKE (SEMSA) ---
+        let ticketInfo = res.data;
+        if (typeof ticketInfo === 'string') {
+          try { ticketInfo = JSON.parse(ticketInfo); } catch { ticketInfo = {}; }
         }
+
+        const title = ticketInfo.title || ticketInfo.result || 'Sin título';
+        const description = ticketInfo.description || ticketInfo.message || 'Sin descripción';
+
+        const confirmMessage =
+          `✅ *Ticket creado exitosamente*\n\n` +
+          `📋 *Título:* ${title}\n` +
+          `📝 *Descripción:* ${description}`;
+
+        await client.sendMessage(msg.from, confirmMessage);
+        console.log('📨 Confirmación enviada al usuario SEMSA.');
       } catch (err) {
         console.error('❌ Error al enviar al webhook SEMSA:', err.message);
         await client.sendMessage(msg.from, '⚠️ Ocurrió un error al registrar tu solicitud SEMSA. Inténtalo más tarde.');
