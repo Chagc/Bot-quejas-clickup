@@ -10,6 +10,9 @@ const PORT = process.env.PORT || 3000;
 const BOT_NUMBER = process.env.BOT_NUMBER;
 const MAKE_HOOK = process.env.MAKE_WEBHOOK;
 const MAKE_HOOK_SEMSA = process.env.MAKE_WEBHOOK_SEMSA;
+const MANUAL_WEBHOOK_TOKEN = process.env.MANUAL_WEBHOOK_TOKEN;
+const DEFAULT_GROUP_ID = '5218123970836-1700659823@g.us';
+const DEFAULT_TEST_MESSAGE = 'TEST MESSAGE';
 
 if (!BOT_NUMBER || !MAKE_HOOK || !MAKE_HOOK_SEMSA) {
   console.error('❌ Falta alguna variable requerida (BOT_NUMBER, MAKE_WEBHOOK o MAKE_WEBHOOK_SEMSA) en .env');
@@ -18,7 +21,7 @@ if (!BOT_NUMBER || !MAKE_HOOK || !MAKE_HOOK_SEMSA) {
 
 // === MAPEO DE EMPRESA -> GRUPO WHATSAPP ===
 const COMPANY_GROUPS = {
-  'd6d48695-1717-4cdb-bfe5-7f7840079138': '5218123970836-1700659823@g.us'
+  'd6d48695-1717-4cdb-bfe5-7f7840079138': '5218123970836-1700659823@g.us' //Wa-Kwiq
 };
 
 // === FUNCIÓN PARA FORMATEAR FECHA EN ESPAÑOL ===
@@ -260,6 +263,34 @@ app.post('/clickup-webhook', async (req, res) => {
   } catch (error) {
     console.error('❌ Error manejando webhook ClickUp:', error.message);
     res.sendStatus(500);
+  }
+});
+
+// Webhook manual para enviar mensajes a grupos específicos
+app.post('/send-group-message', async (req, res) => {
+  try {
+    const { token, groupId, companyId, message } = req.body || {};
+
+    if (MANUAL_WEBHOOK_TOKEN && token !== MANUAL_WEBHOOK_TOKEN) {
+      console.warn('⚠️ Intento de acceso con token inválido al webhook manual');
+      return res.status(401).json({ error: 'Token inválido' });
+    }
+
+    const resolvedGroupId =
+      (typeof groupId === 'string' && groupId.trim()) ||
+      (companyId ? COMPANY_GROUPS[companyId] : undefined) ||
+      DEFAULT_GROUP_ID;
+
+    const resolvedMessage =
+      (typeof message === 'string' && message.trim()) ||
+      DEFAULT_TEST_MESSAGE;
+
+    await client.sendMessage(resolvedGroupId, resolvedMessage);
+    console.log(`📨 Mensaje manual enviado al grupo ${resolvedGroupId}`);
+    res.json({ status: 'ok', groupId: resolvedGroupId });
+  } catch (error) {
+    console.error('❌ Error enviando mensaje manual:', error.message);
+    res.status(500).json({ error: 'No se pudo enviar el mensaje' });
   }
 });
 
