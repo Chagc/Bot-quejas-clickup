@@ -73,18 +73,16 @@ function parseMakeResponse(data) {
 
 // === INICIALIZAR CLIENTE WHATSAPP ===
 const client = new Client({
-  authStrategy: new LocalAuth({ clientId: 'wa-bot' }),
-  puppeteer: {
-    headless: true,
-    executablePath: '/usr/bin/chromium',
-    args: [
+    authStrategy: new LocalAuth({ clientId: 'wa-bot' }),
+    puppeteer: {
+      executablePath: '/usr/bin/chromium',
+      headless: 'new',
+      args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--disable-software-rasterizer'
-    ]
-}
+        '--disable-dev-shm-usage'
+      ]
+    }
 });
 
 // === EVENTOS DEL CLIENTE ===
